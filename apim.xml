@@ -1,0 +1,87 @@
+<!-- APIM Policy for centralized authentication -->
+<policies>
+    <inbound>
+        <base />
+        
+        <!-- API Key Authentication -->
+        <validate-headers specified-header-action="ignore">
+            <header name="X-API-Key" failed-validation-httpcode="401" failed-validation-error-message="API key required" />
+        </validate-headers>
+
+        <!-- Custom Authentication Policy -->
+        <send-request mode="new" response-variable-name="authResponse" timeout="10" ignore-error="false">
+            <set-url>https://your-function-app.azurewebsites.net/api/validate-api-key</set-url>
+            <set-method>POST</set-method>
+            <set-header name="Content-Type" exists-action="override">
+                <value>application/json</value>
+            </set-header>
+            <set-body>@{
+                return JsonConvert.SerializeObject(new {
+                    apiKey = context.Request.Headers.GetValueOrDefault("X-API-Key"),
+                    clientIP = context.Request.IpAddress,
+                    method = context.Request.Method,
+                    path = context.Request.Url.Path,
+                    requiredScopes = new[] { "demographics:write" } // Set per API
+                });
+            }</set-body>
+        </send-request>
+
+        <!-- Check authentication response -->
+        <choose>
+            <when condition="@(((IResponse)context.Variables['authResponse']).StatusCode != 200)">
+                <return-response response-variable-name="authResponse" />
+            </when>
+        </choose>
+
+        <!-- Extract user context from auth response -->
+        <set-variable name="userContext" value="@(((IResponse)context.Variables['authResponse']).Body.As{})" /> <!-- fix this-->
+        <set-variable name="lawFirm" value="@(((JObject)context.Variables['userContext'])['lawFirm'].ToString())" />
+        <set-variable name="apiKeyId" value="@(((JObject)context.Variables['userContext'])['keyId'].ToString())" />
+
+        <!-- Rate Limiting per API key -->
+        <rate-limit-by-key calls="100" renewal-period="60" counter-key="@((string)context.Variables['apiKeyId'])" />
+        <quota-by-key calls="10000" renewal-period="3600" counter-key="@((string)context.Variables['apiKeyId'])" />
+
+        <!-- Add user context to backend request -->
+        <set-header name="X-User-Context" exists-action="override">
+            <value>@((string)context.Variables['userContext'])</value>
+        </set-header>
+
+        <!-- CORS handling -->
+        <cors allow-credentials="false">
+            <allowed-origins>
+                <origin>*</origin>
+            </allowed-origins>
+            <allowed-methods>
+                <method>GET</method>
+                <method>POST</method>
+                <method>PUT</method>
+                <method>DELETE</method>
+                <method>OPTIONS</method>
+            </allowed-methods>
+            <allowed-headers>
+                <header>*</header>
+            </allowed-headers>
+        </cors>
+    </inbound>
+    
+    <backend>
+        <base />
+    </backend>
+    
+    <outbound>
+        <base />
+        
+        <!-- Add rate limit headers to response -->
+        <set-header name="X-RateLimit-Remaining" exists-action="override">
+            <value>@(context.Response.Headers.GetValueOrDefault("X-RateLimit-Remaining", "0"))</value>
+        </set-header>
+        
+        <!-- Remove internal headers -->
+        <set-header name="X-User-Context" exists-action="delete" />
+    </outbound>
+    
+    <on-error>
+        <base />
+    </on-error>
+</policies>

@@ -1,0 +1,12 @@
+{
+  "name": "partners-api-monorepo",
+  "private": "true",
+    "workspaces": [
+    "Demographics",
+    "GuardianshipReview",
+    "shared"
+  ],
+  "dependencies": {
+    "azurite": "^3.35.0"
+  }
+}
