@@ -1,0 +1,93 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    platform: linux/amd64
+    ports:
+      - "3000:3000"
+      - "7071:7071"
+    environment:
+      - AzureWebJobsStorage=${AZURE_WEB_STORAGE_ENDPOINT}
+      - PORT=${SERVER_PORT}
+      - DB_SERVER=mssql
+      - DB_DATABASE=${DB_DATABASE}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_PORT=${DB_PORT}
+      - REDIS_CONNECTION_STRING=${REDIS_CONNECTION_STRING}
+      - BLOB_STORAGE_CONNECTION_STRING=${BLOB_STORAGE_CONNECTION_STRING}
+      - API_KEY_ENCRYPTION_KEY=${API_KEY_ENCRYPTION_KEY}
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET}
+      - ENVIRONMENT=development
+    volumes:
+      - .:/app
+      # - ./src:/home/site/wwwroot/src
+      # - ./logs:/home/site/wwwroot/logs
+      # - ./host.json:/home/site/wwwroot/host.json
+      # - ./local.settings.json:/home/site/wwwroot/local.settings.json
+    depends_on:
+      mssql:
+        condition: service_healthy
+    command: npm run dev
+
+  mssql:
+    image: mcr.microsoft.com/azure-sql-edge:latest
+    user: root
+    env_file:
+      - .env
+    platform: linux/amd64
+    environment:
+      - SA_PASSWORD=${DB_PASSWORD}
+      - ACCEPT_EULA=Y
+      - MSSQL_PID=Developer
+    ports:
+      - "1433:1433"
+    volumes:
+      - mssql-data:/var/opt/mssql
+      - ./src/scripts/init-database.sql:/init-database.sql
+      - ./src/scripts/init-db.sh:/init-db.sh
+    command: ["/init-db.sh"]
+    healthcheck:
+      test: /opt/mssql-tools/bin/sqlcmd -S localhost -U ${DB_USER} -P "${DB_PASSWORD}" -d master -Q "SELECT 1" || exit 1
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  # migrator:
+  #   build: .
+  #   depends_on:
+  #     - mssql
+  #   environment:
+  #     - DB_SERVER=mssql
+  #     - DB_DATABASE=PartnersDB
+  #     - DB_USER=sa
+  #     - DB_PASSWORD=${DB_PASSWORD}
+  #     - DB_PORT=1433
+  #   volumes:
+  #     - .:/usr/src/app
+  #   command: /bin/sh -c "sleep 10 && /opt/mssql-tools/bin/sqlcmd -S db -U sa -P ${DB_PASSWORD} -d PartnersDB -i migrations/initial_setup.sql"
+
+  redis:
+    image: redis:7.0
+    platform: linux/amd64
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite
+    platform: linux/amd64
+    ports:
+      - "10000:10000"
+      - "10001:10001"
+      - "10002:10002"
+    volumes:
+      - azurite-data:/data
+
+volumes:
+  mssql-data:
+  redis-data:
+  azurite-data:
