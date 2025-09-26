@@ -26,8 +26,11 @@ export const ApiKeySchema = z.object({
     'demographics:write', 
     'demographics:delete',
     'demographics:admin',
+    'guardianship:read',
+    'guardianship:write',
+    'guardianship:delete',
     'webhooks:manage',
-    'files:upload'
+    'files:upload',
   ])),
   
   // API key metadata
