@@ -4,9 +4,7 @@
     "workspaces": [
     "Demographics",
     "GuardianshipReview",
+    "Settlement",
     "shared"
-  ],
-  "dependencies": {
-    "azurite": "^3.35.0"
-  }
+  ]
 }
